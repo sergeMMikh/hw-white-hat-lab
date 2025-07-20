@@ -1,0 +1,35 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/bionic64"
+  config.vm.hostname = "bwapp"
+  config.vm.network "private_network", ip: "192.168.0.2"
+
+  config.vm.provision "shell", inline: <<-SHELL
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y apache2 mysql-server php php-mysql libapache2-mod-php unzip wget
+
+    # Загрузка оригинального архива bWAPP
+    cd /tmp
+    wget -O bwapp.zip https://sourceforge.net/projects/bwapp/files/latest/download
+    unzip bwapp.zip
+    mv bWAPP /var/www/html/bwapp
+    chown -R www-data:www-data /var/www/html/bwapp
+
+    # Создание базы данных и пользователя
+    mysql -u root <<EOF
+CREATE DATABASE IF NOT EXISTS bWAPP;
+CREATE USER IF NOT EXISTS 'bee'@'localhost' IDENTIFIED BY 'bug';
+GRANT ALL PRIVILEGES ON bWAPP.* TO 'bee'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+    # Импорт начальных данных
+    mysql -u root bWAPP < /var/www/html/bwapp/bwapp.sql
+
+    # Настройка settings.php
+    cp /var/www/html/bwapp/admin/settings.php /var/www/html/bwapp/admin/settings.php.bak
+    sed -i 's/\$db_username = .*/$db_username = "bee";/' /var/www/html/bwapp/admin/settings.php
+    sed -i 's/\$db_password = .*/$db_password = "bug";/' /var/www/html/bwapp/admin/settings.php
+
+    systemctl restart apache2
+  SHELL
+end
